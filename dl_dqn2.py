@@ -166,7 +166,8 @@ class Agent():
     # epsilon探索率ϵ。即策略是以1−ϵ的概率选择当前最大价值的动作，以ϵ的概率随机选择新动作。
     def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions=5,
                  max_mem_size=100, eps_end=0.03, eps_dec=0.0002, fc1_dims=256,
-                 fc2_dims=128, verbose=True, replace_target_iter=8):
+                 fc2_dims=128, verbose=True, replace_target_iter=8,
+                 trace_hook=None):
         self.replace_target_iter = int(replace_target_iter)
         self.learn_step_counter = 0
         self.gamma = gamma
@@ -180,6 +181,9 @@ class Agent():
         self.batch_size = batch_size
         self.mem_cntr = 0
         self.verbose = verbose
+        self.trace_hook = trace_hook
+        self._trace_action_index = 0
+        self._trace_learn_index = 0
 
         self.Q_eval = DeepQNetwork(self.lr, input_dims=input_dims, n_actions=self.n_actions,
                                    fc1_dims=fc1_dims, fc2_dims=fc2_dims)
@@ -193,6 +197,10 @@ class Agent():
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+
+    def _trace(self, event, payload):
+        if self.trace_hook is not None:
+            self.trace_hook(event, payload)
 
     def save_model(self, model_path, metadata=None):
         """Save portable weights plus the architecture needed to reload them."""
@@ -261,6 +269,17 @@ class Agent():
     # observation就是状态state
     def choose_action(self, observation, explore=True):
         r = np.random.random() if explore else 1.0
+        trace_index = self._trace_action_index
+        self._trace_action_index += 1
+        trace = {
+            "index": trace_index,
+            "epsilon": float(self.epsilon),
+            "explore": bool(explore),
+            "random_draw": float(r),
+            "observation_sha256": hashlib.sha256(
+                np.asarray(observation, dtype=np.float64).tobytes()
+            ).hexdigest(),
+        }
 
         if not explore or r > self.epsilon:
             if self.verbose:
@@ -271,11 +290,18 @@ class Agent():
             with T.no_grad():
                 actions = self.Q_eval.forward(state)
                 action = T.argmax(actions).item()
+                action_values = actions.detach().cpu().numpy().reshape(-1)
+                trace["q_values"] = {
+                    "sha256": hashlib.sha256(action_values.tobytes()).hexdigest(),
+                    "head": action_values[:5].tolist(),
+                }
         else:
             # epsilon概率执行随机动作
             action = np.random.choice(self.action_space)
             if self.verbose:
                 print("random action:", action)
+        trace["action"] = int(action)
+        self._trace("choose_action", trace)
         return action
 
     def _replace_target_params(self):
@@ -306,6 +332,14 @@ class Agent():
 
         # 随机生成一个batch的memory index，不可重复抽取
         batch = np.random.choice(max_mem, self.batch_size, replace=False)
+        trace_index = self._trace_learn_index
+        self._trace_learn_index += 1
+        trace = {
+            "index": trace_index,
+            "learn_step": int(self.learn_step_counter),
+            "mem_cntr": int(self.mem_cntr),
+            "batch_sha256": hashlib.sha256(np.asarray(batch).tobytes()).hexdigest(),
+        }
 
         # int序列array，0~batch_size
         batch_index = np.arange(self.batch_size, dtype=np.int32)
@@ -326,12 +360,27 @@ class Agent():
         q_next[terminal_batch] = 0.0  # 如果是最终状态，则将q值置为0
         q_target = reward_batch + self.gamma * T.max(q_next, dim=1)[0]
         loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
+        for name, value in (("q_eval", q_eval), ("q_next", q_next), ("q_target", q_target)):
+            array = value.detach().cpu().contiguous().numpy()
+            trace[name] = {
+                "sha256": hashlib.sha256(array.tobytes()).hexdigest(),
+                "head": array.reshape(-1)[:5].tolist(),
+            }
+        trace["loss"] = float(loss.item())
+        self._trace("learn_values", trace)
         loss.backward()
         self.Q_eval.optimizer.step()
 
         self.epsilon = self.epsilon - self.eps_dec if self.epsilon > self.eps_min \
             else self.eps_min
         self.learn_step_counter += 1
+        self._trace("learn_after", {
+            "index": trace_index,
+            "learn_step": int(self.learn_step_counter),
+            "loss": float(loss.item()),
+            "epsilon": float(self.epsilon),
+            "q_eval_state_sha256": self.model_state_hash(),
+        })
         return loss.item()
 
 class T4ExcelWriter:
