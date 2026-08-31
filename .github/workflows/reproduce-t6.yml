@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   reproduce:
-    runs-on: LTR-DQN
+    runs-on: windows-latest
     timeout-minutes: 720
     env:
       MPLBACKEND: Agg
