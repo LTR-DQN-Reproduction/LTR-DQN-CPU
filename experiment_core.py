@@ -441,6 +441,37 @@ def train_dqn(
         ["qid_date", "stock_code"], kind="mergesort"
     ).reset_index(drop=True)
     configure_torch_threads(torch)
+    trace_hook = None
+    trace_path = None
+    if os.environ.get("LTR_DQN_TRACE") == "1":
+        trace_dir = Path(os.environ.get("LTR_DQN_TRACE_DIR", str(TEMP_DIR / "dqn_trace")))
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        trace_path = trace_dir / f"{code}_DQN_train{train_year}.jsonl"
+
+        def trace_hook(event, payload):
+            record = {
+                "market": code,
+                "train_year": train_year,
+                "seed": seed,
+                "event": event,
+                **payload,
+            }
+            with trace_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+        data_digest = hashlib.sha256(
+            pd.util.hash_pandas_object(data, index=True).values.tobytes()
+        ).hexdigest()
+        ranked_digest = hashlib.sha256(
+            pd.util.hash_pandas_object(ranked, index=True).values.tobytes()
+        ).hexdigest()
+        trace_hook("inputs", {
+            "data_sha256": data_digest,
+            "ranked_sha256": ranked_digest,
+            "ranking_file_sha256": sha256(ranking_file),
+            "data_shape": list(data.shape),
+            "ranked_shape": list(ranked.shape),
+        })
     env = Environment(
         data,
         ranked,
@@ -452,7 +483,12 @@ def train_dqn(
         max_mem_size=max_mem_size, eps_end=eps_end, eps_dec=eps_dec,
         replace_target_iter=replace_target_iter, input_dims=[13],
         fc1_dims=256, fc2_dims=128, lr=lr, verbose=False,
+        trace_hook=trace_hook,
     )
+    if trace_hook is not None:
+        trace_hook("agent_init", {
+            "q_eval_state_sha256": agent.model_state_hash(),
+        })
     for episode in range(n_games):
         done = False
         observation = env.reset()
@@ -470,6 +506,10 @@ def train_dqn(
         "batch_size": batch_size, "max_mem_size": max_mem_size,
         "replace_target_iter": replace_target_iter,
     })
+    if trace_hook is not None:
+        trace_hook("train_complete", {
+            "q_eval_state_sha256": agent.model_state_hash(),
+        })
     return agent.model_state_hash()
 
 
