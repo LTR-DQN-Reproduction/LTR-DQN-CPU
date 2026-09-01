@@ -197,6 +197,8 @@ def runtime_versions() -> dict[str, str]:
         "omp_num_threads": os.environ.get("OMP_NUM_THREADS", ""),
         "mkl_num_threads": os.environ.get("MKL_NUM_THREADS", ""),
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS", ""),
+        "aten_cpu_capability": os.environ.get("ATEN_CPU_CAPABILITY", ""),
+        "mkl_cbwr": os.environ.get("MKL_CBWR", ""),
     }
 
 
@@ -247,7 +249,7 @@ def model_for_baseline(name: str, market: str, train_year: int, seed: int):
             # T4M6/T4C6 in the repository use 200 GPU trees for regression.
             objective="reg:squarederror", n_estimators=200, max_depth=4,
             learning_rate=0.1, subsample=1.0, colsample_bytree=0.8,
-            tree_method="gpu_hist",
+            tree_method="approx", n_jobs=1, random_state=int(seed),
         )
     if name == "SVM_C":
         return SVC(kernel="rbf", C=1.0)
@@ -258,7 +260,7 @@ def model_for_baseline(name: str, market: str, train_year: int, seed: int):
             # T4M9/T4C9 in the repository use 150 GPU trees for classification.
             objective="reg:squarederror", n_estimators=150, max_depth=4,
             learning_rate=0.1, subsample=1.0, colsample_bytree=0.8,
-            tree_method="gpu_hist",
+            tree_method="approx", n_jobs=1, random_state=int(seed),
         )
     raise ValueError(f"Unsupported baseline model: {name}")
 
@@ -280,10 +282,8 @@ def fit_ranker(
     seed = market_seed(code) if seed is None else seed
     set_global_determinism(seed)
     if tree_method is None:
-        # Preserve the original GPU LambdaRank/LambdaMART training path.  A
-        # CPU-only run can explicitly pass ``--ranker_tree_method hist``.
-        tree_method = "gpu_hist"
-    if tree_method not in {"hist", "exact", "approx", "gpu_hist"}:
+        tree_method = "approx"
+    if tree_method not in {"hist", "exact", "approx"}:
         raise ValueError(f"Unsupported ranker tree method: {tree_method}")
     train, test = load_stock_data(market, train_year)
     # The paper ranker scripts normalize the complete train/test feature and
@@ -342,7 +342,10 @@ def fit_baseline(market: str, train_year: int, model_name: str, seed: int | None
     x_scaler = MinMaxScaler()
     y_scaler = MinMaxScaler()
     x_train = x_scaler.fit_transform(train[FEATURES])
-    x_test = x_scaler.fit_transform(test[FEATURES])
+    # Test features must use the training-fitted scaler.  Fitting a second
+    # scaler on the test period leaks future extrema and changes every
+    # baseline prediction relative to the paper's train/test protocol.
+    x_test = x_scaler.transform(test[FEATURES])
     classifier = model_name.endswith("_C")
     target = train["up_down"].astype(int) if classifier else train[["real_return"]]
     if classifier:
@@ -440,19 +443,63 @@ def train_dqn(
     ranked = pd.read_csv(ranking_file).sort_values(
         ["qid_date", "stock_code"], kind="mergesort"
     ).reset_index(drop=True)
+    if "prediction" not in ranked.columns:
+        raise ValueError(
+            f"DQN LambdaMART ranking must contain prediction: {ranking_file}"
+        )
     configure_torch_threads(torch)
+    trace_hook = None
+    trace_limit = 0
+    if os.environ.get("LTR_DQN_TRACE") == "1":
+        trace_dir = Path(os.environ.get(
+            "LTR_DQN_TRACE_DIR", str(TEMP_DIR / "dqn_trace")
+        ))
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        trace_path = trace_dir / f"{code}_DQN_train{train_year}.jsonl"
+        trace_path.unlink(missing_ok=True)
+        trace_limit = int(os.environ.get("LTR_DQN_TRACE_LIMIT", "128"))
+
+        def trace_hook(event, payload):
+            record = {
+                "market": code,
+                "train_year": train_year,
+                "seed": seed,
+                "event": event,
+                **payload,
+            }
+            with trace_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+        trace_hook("inputs", {
+            "data_sha256": hashlib.sha256(
+                pd.util.hash_pandas_object(data, index=True).values.tobytes()
+            ).hexdigest(),
+            "ranked_sha256": hashlib.sha256(
+                pd.util.hash_pandas_object(ranked, index=True).values.tobytes()
+            ).hexdigest(),
+            "ranking_file_sha256": sha256(ranking_file),
+            "data_shape": list(data.shape),
+            "ranked_shape": list(ranked.shape),
+            "trace_limit": trace_limit,
+        })
     env = Environment(
         data,
         ranked,
         start_date=year_start(train_year),
         end_date=TRAIN_END,
+        ranking_column="prediction",
     )
     agent = Agent(
         gamma=gamma, epsilon=epsilon, batch_size=batch_size, n_actions=5,
         max_mem_size=max_mem_size, eps_end=eps_end, eps_dec=eps_dec,
         replace_target_iter=replace_target_iter, input_dims=[13],
         fc1_dims=256, fc2_dims=128, lr=lr, verbose=False,
+        trace_hook=trace_hook, trace_limit=trace_limit,
     )
+    if trace_hook is not None:
+        trace_hook("agent_init", {
+            "q_eval_state_sha256": agent.model_state_hash(),
+        })
     for episode in range(n_games):
         done = False
         observation = env.reset()
@@ -470,6 +517,10 @@ def train_dqn(
         "batch_size": batch_size, "max_mem_size": max_mem_size,
         "replace_target_iter": replace_target_iter,
     })
+    if trace_hook is not None:
+        trace_hook("train_complete", {
+            "q_eval_state_sha256": agent.model_state_hash(),
+        })
     return agent.model_state_hash()
 
 
@@ -500,8 +551,18 @@ def evaluate_dqn(
     ranked = pd.read_csv(ranking_file).sort_values(
         ["qid_date", "stock_code"], kind="mergesort"
     ).reset_index(drop=True)
+    if "prediction" not in ranked.columns:
+        raise ValueError(
+            f"DQN LambdaMART ranking must contain prediction: {ranking_file}"
+        )
     configure_torch_threads(torch)
-    env = Environment(data, ranked, start_date=20211022, end_date=TEST_END)
+    env = Environment(
+        data,
+        ranked,
+        start_date=20211022,
+        end_date=TEST_END,
+        ranking_column="prediction",
+    )
     agent = Agent(
         # Match the original DQN test loop: seeded epsilon-greedy actions and
         # replay updates are retained so the native policy is evaluated under

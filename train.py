@@ -82,8 +82,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_mem_size", type=int, default=100)
     parser.add_argument("--replace_target_iter", type=int, default=8)
     parser.add_argument(
-        "--ranker_tree_method", choices=["hist", "exact", "approx"], default="hist",
-        help="Ranker tree builder; defaults to the CPU hist implementation",
+        "--ranker_tree_method", choices=["hist", "exact", "approx"], default="approx",
+        help="Single-CPU ranker tree builder; approx is the verified default",
     )
     parser.add_argument(
         "--t6", action="store_true",
@@ -104,10 +104,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--t6_dqn_seed_summary", type=Path, default=None,
         help="Independent DQN seed ledger; defaults to data/reproducibility/dqn_seed_summary.csv",
-    )
-    parser.add_argument(
-        "--t6_require_gpu", action="store_true",
-        help="Deprecated compatibility flag; CPU T6 is used regardless",
     )
     return parser.parse_args()
 
@@ -242,10 +238,8 @@ def main() -> None:
                     )
                     train_path = rankings_dir / f"{market}_{model_name}_train{year}.csv"
                     test_path = rankings_dir / f"{market}_{model_name}_test{year}.csv"
-                    # Preserve the raw LambdaMART scores.  The original
-                    # backtest sorts these scores directly; collapsing them
-                    # to Top-4 labels changes tie handling on ChiNext and can
-                    # select a different report when DQN requests 1-3 stocks.
+                    # Preserve the ranker's raw predictions. DQN consumes the
+                    # same LambdaMART scores used by the ranking backtest.
                     train_ranked.to_csv(train_path, index=False)
                     test_ranked.to_csv(test_path, index=False)
                     record = {
@@ -361,7 +355,7 @@ def main() -> None:
             # Recompute every cell from the raw data on each invocation.  A
             # prior t6_raw.csv is never used as a shortcut.
             use_gpu=False, resume=False,
-            dqn_seed_path=dqn_seed_path, require_gpu=args.t6_require_gpu,
+            dqn_seed_path=dqn_seed_path, require_gpu=False,
         )
         t6_manifest = {
             "markets": t6_markets,
@@ -370,7 +364,7 @@ def main() -> None:
             "seed_summary_sha256": sha256(seed_path),
             "dqn_seed_summary": str(dqn_seed_path),
             "dqn_seed_summary_sha256": sha256(dqn_seed_path),
-            "require_gpu": args.t6_require_gpu,
+            "require_gpu": False,
             "select_map": str(select_path),
             "select_map_sha256": sha256(select_path),
             "raw_csv": str(t6_output),

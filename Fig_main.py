@@ -90,9 +90,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
         "--ranker_tree_method",
-        choices=["auto", "hist", "exact", "approx", "gpu_hist"],
-        default="auto",
-        help="auto uses exact for ChiNext LambdaMART and hist otherwise",
+        choices=["hist", "exact", "approx"],
+        default="approx",
+        help="Single-CPU ranker tree builder; approx matches train.py",
     )
     parser.add_argument(
         "--n_games",
@@ -203,11 +203,7 @@ def fit_ranker_variant(
 ) -> tuple[xgb.XGBRanker, pd.DataFrame]:
     """Fit the paper ranker while varying only the requested hyperparameters."""
     code = MARKETS[market]
-    resolved_tree_method = (
-        "exact" if tree_method == "auto" and model_name == "LambdaMART" and market == "ChiNext"
-        else "hist" if tree_method == "auto"
-        else tree_method
-    )
+    resolved_tree_method = tree_method
     train, test = load_stock_data(market, 3)
     combined = pd.concat([train, test], ignore_index=True)
     x_scaler = MinMaxScaler(feature_range=(-1, 1)).fit(combined[FEATURES])
@@ -748,7 +744,7 @@ def compute_feature_importance(
         y_train = y_scaler.fit_transform(train[["real_return"]]).ravel()
         lasso = Lasso(alpha=0.0001)
         lasso.fit(x_train, y_train)
-        resolved_tree_method = "hist" if tree_method == "auto" else tree_method
+        resolved_tree_method = tree_method
         xgb_model = xgb.XGBRegressor(
             objective="reg:squarederror", booster="gbtree", tree_method=resolved_tree_method,
             n_estimators=100, max_depth=4, learning_rate=0.1,
@@ -764,7 +760,7 @@ def compute_feature_importance(
             max_depth=6,
             n_estimators=100,
             seed=stage_seed(code, 3, "rank", seed_config, seed_override),
-            tree_method="hist" if tree_method == "auto" else tree_method,
+            tree_method=tree_method,
         )
         importance = {
             "LTR-DQN": minmax(rank_model.feature_importances_),
