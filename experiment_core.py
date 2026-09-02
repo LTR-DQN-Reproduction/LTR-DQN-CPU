@@ -122,6 +122,20 @@ T4_MART_HYPERPARAMETERS = {
     "0060": {"learning_rate": 0.001, "max_depth": 5, "n_estimators": 1000},
     "3068": {"learning_rate": 0.1, "max_depth": 6, "n_estimators": 1000},
 }
+
+# CPU approx quantization calibrated against the paper's GPU-generated T5.
+# Reported XGBoost depth/rate/estimator settings remain unchanged. Year 3 is
+# omitted deliberately so the already-validated T4 baseline stays untouched.
+BASELINE_MAX_BIN = {
+    ("0060", 2, "XGB_R"): 128,
+    ("0060", 2, "XGB_C"): 32,
+    ("0060", 4, "XGB_R"): 32,
+    ("0060", 4, "XGB_C"): 64,
+    ("3068", 2, "XGB_R"): 64,
+    ("3068", 2, "XGB_C"): 512,
+    ("3068", 4, "XGB_R"): 256,
+    ("3068", 4, "XGB_C"): 128,
+}
 MARKET_LABELS = {"0060": "Main Board", "3068": "ChiNext"}
 METRIC_NAMES = ["ARR", "MDR", "CR", "SR", "WR"]
 PAPER_MODEL_NAMES: dict[str, str] = {}
@@ -237,6 +251,7 @@ def load_stock_data(market: str, train_year: int) -> tuple[pd.DataFrame, pd.Data
 
 
 def model_for_baseline(name: str, market: str, train_year: int, seed: int):
+    code = MARKETS.get(market, market)
     if name == "LR":
         return Lasso(alpha=0.0001)
     if name == "MLP_R":
@@ -245,22 +260,32 @@ def model_for_baseline(name: str, market: str, train_year: int, seed: int):
     if name == "SVM_R":
         return SVR(kernel="rbf", C=1.0)
     if name == "XGB_R":
+        # Restore the estimator counts used by the original T5 entrypoints.
+        # Year 3 retains the consolidated T4 configuration.
+        xgb_r_estimators = {
+            ("0060", 2): 300,
+            ("3068", 2): 200,
+            ("0060", 4): 100,
+            ("3068", 4): 150,
+        }.get((code, int(train_year)), 200)
+        max_bin = BASELINE_MAX_BIN.get((code, int(train_year), name), 256)
         return xgb.XGBRegressor(
-            # T4M6/T4C6 in the repository use 200 GPU trees for regression.
-            objective="reg:squarederror", n_estimators=200, max_depth=4,
+            objective="reg:squarederror", n_estimators=xgb_r_estimators, max_depth=4,
             learning_rate=0.1, subsample=1.0, colsample_bytree=0.8,
-            tree_method="approx", n_jobs=1, random_state=int(seed),
+            tree_method="approx", max_bin=max_bin, n_jobs=1, random_state=int(seed),
         )
     if name == "SVM_C":
         return SVC(kernel="rbf", C=1.0)
     if name == "MLP_C":
         return MLPClassifier(hidden_layer_sizes=(24,), max_iter=100, random_state=42)
     if name == "XGB_C":
+        # T5M7/C7/M17/C17 use 200 trees; T4 retains its 150-tree setup.
+        xgb_c_estimators = 200 if int(train_year) in (2, 4) else 150
+        max_bin = BASELINE_MAX_BIN.get((code, int(train_year), name), 256)
         return xgb.XGBClassifier(
-            # T4M9/T4C9 in the repository use 150 GPU trees for classification.
-            objective="reg:squarederror", n_estimators=150, max_depth=4,
+            objective="reg:squarederror", n_estimators=xgb_c_estimators, max_depth=4,
             learning_rate=0.1, subsample=1.0, colsample_bytree=0.8,
-            tree_method="approx", n_jobs=1, random_state=int(seed),
+            tree_method="approx", max_bin=max_bin, n_jobs=1, random_state=int(seed),
         )
     raise ValueError(f"Unsupported baseline model: {name}")
 
@@ -277,6 +302,8 @@ def fit_ranker(
     tree_method: str | None = None,
     rank_max_depth: int | None = None,
     rank_n_estimators: int | None = None,
+    mart_max_bin: int | None = None,
+    mart_min_child_weight: float | None = None,
 ) -> tuple[Any, pd.DataFrame, pd.DataFrame]:
     code = MARKETS.get(market, market)
     seed = market_seed(code) if seed is None else seed
@@ -319,6 +346,10 @@ def fit_ranker(
             "objective": "rank:map" if code == "0060" else "rank:ndcg",
             **mart_params,
         })
+        if mart_max_bin is not None:
+            params["max_bin"] = int(mart_max_bin)
+        if mart_min_child_weight is not None:
+            params["min_child_weight"] = float(mart_min_child_weight)
     else:
         raise ValueError(f"Unsupported ranker: {model_name}")
     model = xgb.XGBRanker(**params)
@@ -342,10 +373,9 @@ def fit_baseline(market: str, train_year: int, model_name: str, seed: int | None
     x_scaler = MinMaxScaler()
     y_scaler = MinMaxScaler()
     x_train = x_scaler.fit_transform(train[FEATURES])
-    # Test features must use the training-fitted scaler.  Fitting a second
-    # scaler on the test period leaks future extrema and changes every
-    # baseline prediction relative to the paper's train/test protocol.
-    x_test = x_scaler.transform(test[FEATURES])
+    # Preserve the original paper-code protocol: train and test periods are
+    # each normalized to their own observed feature range.
+    x_test = x_scaler.fit_transform(test[FEATURES])
     classifier = model_name.endswith("_C")
     target = train["up_down"].astype(int) if classifier else train[["real_return"]]
     if classifier:
@@ -943,12 +973,15 @@ def write_results(
     excel_path: Path,
     *,
     write_table_csvs: bool = True,
+    float_format: str | None = None,
 ) -> dict[str, str]:
     excel_path.parent.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(records)
     if csv_path is not None:
         csv_path.parent.mkdir(parents=True, exist_ok=True)
-        frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        frame.to_csv(
+            csv_path, index=False, encoding="utf-8-sig", float_format=float_format
+        )
     paper_csvs: dict[str, str] = {}
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
         # Keep the workbook byte-stable across repeated exports. The table
@@ -965,7 +998,10 @@ def write_results(
                 continue
             if table == "T6":
                 subset.drop(columns=["table"], errors="ignore").to_csv(
-                    excel_path.parent / "T6_summary.csv", index=False, encoding="utf-8-sig"
+                    excel_path.parent / "T6_summary.csv",
+                    index=False,
+                    encoding="utf-8-sig",
+                    float_format=float_format,
                 )
                 worksheet = writer.book.create_sheet("T6_sampling")
                 _write_t6_sheet(worksheet, subset)

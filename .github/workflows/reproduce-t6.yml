@@ -18,10 +18,17 @@ permissions:
 jobs:
   reproduce:
     runs-on: windows-latest
-    timeout-minutes: 720
+    timeout-minutes: 360
     env:
       MPLBACKEND: Agg
       PYTHONHASHSEED: "0"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+      ATEN_CPU_CAPABILITY: default
+      MKL_CBWR: COMPATIBLE
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,15 +44,15 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python -m pip check
           python -c "from model import validate_runtime; validate_runtime()"
-      - name: Train three-year models
-        run: python train.py --models all --years 3 --ranker_tree_method hist
-      - name: Export T4 baseline reused by T6 100 percent row
-        run: python main.py --tables T4 --no_baselines --export_csvs
-      - name: Sample T6
-        run: python train.py --models all --years 3 --t6 --ranker_tree_method hist
-      - name: Export T6 workbook and Figure C4
+      - name: Record Windows CPU
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor | Select-Object Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors
+      - name: Train T4 and run fresh CPU-20 sampling
+        run: python train.py --models all --years 3 --t6 --ranker_tree_method approx
+      - name: Export and verify T6
         run: |
           python T6_main.py
+          python -c "import pandas as pd; r=pd.read_csv('temp/t6_runs/t6_raw.csv',float_precision='round_trip'); t=pd.read_csv('temp/t6_runs/t4_primary_reference.csv',float_precision='round_trip').set_index(['market','model']); f=r[r.sampling_rate.eq(1.0)].set_index(['market','model']); c=r[r.sampling_rate.lt(1.0)].groupby(['market','sampling_rate','model']).size(); assert len(r)==606; assert len(c)==30 and c.eq(20).all(); assert f.ARR.equals(t.ARR); assert f.source.eq('same_run_T4').all(); print('T6 verification passed: 606 rows, CPU-20 cells complete, 100% equals same-run T4')"
           python Appendix_Fig_main.py --figures C4 --force
       - uses: actions/upload-artifact@v4
         if: always()
@@ -54,6 +61,9 @@ jobs:
           path: |
             results/T6/
             results/appendix_figures/
+            temp/t6_runs/t4_primary_reference.csv
+            temp/t6_runs/t6_raw.csv
+            temp/t6_runs/t6_manifest.json
           if-no-files-found: warn
           retention-days: 14
 

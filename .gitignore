@@ -6,4 +6,6 @@ model/
 temp/
 runs/
 results/
+server-results*/
+_server_v3_src/
 *.log
