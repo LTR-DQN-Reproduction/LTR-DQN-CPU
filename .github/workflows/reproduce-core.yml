@@ -22,6 +22,13 @@ jobs:
     env:
       MPLBACKEND: Agg
       PYTHONHASHSEED: "0"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+      ATEN_CPU_CAPABILITY: default
+      MKL_CBWR: COMPATIBLE
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,6 +44,9 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python -m pip check
           python -c "from model import validate_runtime; validate_runtime()"
+      - name: Record Windows CPU
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor | Select-Object Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors
       - name: Train rankers and DQN models on CPU
         run: python train.py --ranker_tree_method approx
       - name: Export tables
