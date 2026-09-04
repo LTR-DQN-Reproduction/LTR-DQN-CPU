@@ -1,0 +1,47 @@
+{
+  "scope": "main-text empirical Figures 3-7; excludes Figures 1-2 and Appendix C",
+  "run_dir": "E:\\STUDY\\LTR-DQN-main\\0904-1125",
+  "output_dir": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\figures",
+  "figures": [
+    4
+  ],
+  "seed": null,
+  "seed_config": "built-in",
+  "ranker_tree_method": "approx",
+  "n_games": 31,
+  "runtime": {
+    "python": "3.9.13",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "numpy": "1.21.5",
+    "pandas": "1.4.4",
+    "torch": "2.0.0+cpu",
+    "xgboost": "1.7.6",
+    "device": "cpu",
+    "cuda_available": "False",
+    "gpu": "none",
+    "torch_threads": "1",
+    "torch_interop_threads": "1",
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "openblas_num_threads": "1",
+    "aten_cpu_capability": "default",
+    "mkl_cbwr": "COMPATIBLE"
+  },
+  "outputs": {
+    "Fig4a_LambdaMART_learning_rate.png": "7df92ef06d0526d70c02f6688fed24c458576cb31b2fb5750c34969c851e566e",
+    "Fig4b_LambdaMART_weak_learners.png": "1844b70408c5d9621ce63ec4c47b033dfc123b8716f2b57f255f313692454873",
+    "Fig4c_LambdaMART_max_depth.png": "59a4d2f70e1328dee9bbcdb4c6e7b1e8183f2159acc68c742b2616a90df68e33",
+    "Fig4_LambdaMART_hyperparameters.png": "4e9870eabe598177975912fd016a995b390e130166ed75eae132c9b921e621cc"
+  },
+  "data": {
+    "Fig3a_LambdaRank_learning_rate.csv": "451410754af8a9acc3a85f07d5c0075c33e3a2b325781fcd9c7a7b7e23348b2e",
+    "Fig3b_DQN_learning_rate.csv": "98e5fbe62526915e668ca3893b28a6c854f1bbf6882deb8e06e49e508eb5475d",
+    "Fig4_LambdaMART_hyperparameters.csv": "f8d7c2c60d05ae0eea072e431af49ed60e6d234fa9fa22fb81e931f5289cff06",
+    "Fig5_Fig6_daily_curves.csv": "80878fdfa5a419e0e0c0457491aadba2349d788921c751e5c618c560cfe465e8",
+    "Fig6_ChiNext_daily_actions.csv": "453d494ff5ebf8dad9f872e256187df3851a76ca3bff2bef02aba3347f1c5aab",
+    "Fig6_Main_daily_actions.csv": "fa8c77afb5b51fbb1d838200cd410c41eaa826c189839b60c255f5346da17dcc",
+    "Fig7_feature_importance.csv": "b7a7740559b8cf4c0eed81d4817ba705e6f8d24945e4f19612a2c073480c80af"
+  }
+}

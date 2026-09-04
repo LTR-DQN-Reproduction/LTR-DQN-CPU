@@ -1,0 +1,54 @@
+{
+  "run_dir": "E:\\STUDY\\LTR-DQN-main\\0904-1125",
+  "tables": [
+    "T3",
+    "T4",
+    "T5",
+    "T7"
+  ],
+  "markets": [
+    "Main",
+    "ChiNext"
+  ],
+  "seed": null,
+  "seed_config": "built-in",
+  "runtime": {
+    "python": "3.9.13",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "numpy": "1.21.5",
+    "pandas": "1.4.4",
+    "torch": "2.0.0+cpu",
+    "xgboost": "1.7.6",
+    "device": "cpu",
+    "cuda_available": "False",
+    "gpu": "none",
+    "torch_threads": "1",
+    "torch_interop_threads": "1",
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "openblas_num_threads": "1",
+    "aten_cpu_capability": "default",
+    "mkl_cbwr": "COMPATIBLE"
+  },
+  "rows": 82,
+  "dqn_ranking_mode": "fresh_run",
+  "dqn_evaluation_mode": "dqn",
+  "action_files": {
+    "ChiNext_DQN_actions2.csv": "3ac299200a8d3c1bcb7921a2f7084d8715b1c04f4a99420af272326feb9347dc",
+    "ChiNext_DQN_actions3.csv": "256279a19b99f7ab759a0d4f9082220206d955cf1c6f5dd3063fef456e71b471",
+    "ChiNext_DQN_actions4.csv": "6d5493c945b8e450d2147f337243e9b171d7bcd42be63f4bec0c90b9ee1ee7c7",
+    "Main_DQN_actions2.csv": "8fdac4c1f711ae149fed33edf11f9ddae94bb92e4be2bd7ae02c8d926262a373",
+    "Main_DQN_actions3.csv": "73c66f39f8aef3b82f2952334c669110487fcd38c25f28ff2588344779a321dc",
+    "Main_DQN_actions4.csv": "e3f566b8aff0c270ba45e5c186e3c98ff9c072cc4288b1a9b8e84d9f92633c08"
+  },
+  "long_csv": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\combined\\results_long.csv",
+  "paper_csvs": {
+    "T3": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\combined\\T3.csv",
+    "T4": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\combined\\T4.csv",
+    "T5": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\combined\\T5.csv",
+    "T7": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\combined\\T7.csv"
+  },
+  "excel": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\combined\\results.xlsx"
+}

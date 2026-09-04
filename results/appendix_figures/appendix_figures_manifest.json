@@ -1,0 +1,59 @@
+{
+  "scope": "appendix empirical Figures C1-C5",
+  "run_dir": "E:\\STUDY\\LTR-DQN-main\\0904-1125",
+  "output_dir": "E:\\STUDY\\LTR-DQN-main\\0904-1125\\results\\appendix_figures",
+  "figures": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "runtime": {
+    "python": "3.9.13",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "numpy": "1.21.5",
+    "pandas": "1.4.4",
+    "torch": "2.0.0+cpu",
+    "xgboost": "1.7.6",
+    "device": "cpu",
+    "cuda_available": "False",
+    "gpu": "none",
+    "torch_threads": "1",
+    "torch_interop_threads": "1",
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1",
+    "openblas_num_threads": "1",
+    "aten_cpu_capability": "default",
+    "mkl_cbwr": "COMPATIBLE"
+  },
+  "notes": {
+    "C1": "Long-horizon index and all-report baseline portfolio curves.",
+    "C2": "Uses a true brokerage identifier when supplied; otherwise broker_size is an explicitly labelled proxy.",
+    "C3": "Current DQN daily stock counts and current LambdaMART ranking, re-backtested under four fee settings.",
+    "C4": "Uses the fixed 20-replication-per-cell T6 result ledger.",
+    "C5": "Current DQN daily stock counts applied to the supplied ESG ranking data.",
+    "C2_grouping_mode": [
+      "proxy"
+    ],
+    "C2_grouping_column": [
+      "broker_size"
+    ]
+  },
+  "outputs": {
+    "FigC1_baseline_portfolio_and_indices.png": "32845eb6d9f59ee045d3b9e357b4a50ccbe7f10f19adcb61bb879e27410ecae2",
+    "FigC2_brokerage_performance_boxplots.png": "d142d4f5ba984edc82a14817e478b40b0e56584eb70cfe0556621b5436763c11",
+    "FigC3_transaction_cost_sensitivity.png": "be075148abb04bc8dc6dc58c4737ee4441d43fbe261b29b1024705e5b855cc2c",
+    "FigC4_sampling_robustness_boxplots.png": "06b157bd02590dbe08e82fbf57e87c30eabef53418384dc65d785569268cbbf3",
+    "FigC5_ESG_strategy_curves.png": "5d39004045af871a5903b64787de28d1e76feb54719a93e6f080edae695858db"
+  },
+  "data": {
+    "FigC1_long_horizon_curves.csv": "26c0074be1dda5880ec08f88f1cbd1dcdbb76508be493153279a5f53b071e4e6",
+    "FigC2_brokerage_performance.csv": "eef7caa7dea7bda8a027d178df97e67f75b632983819f38c3e009b7f6bf10b49",
+    "FigC3_transaction_cost_curves.csv": "d64f142bea805cd6182b9795fb10fffae6721641b75cf04253390de705f2d5fc",
+    "FigC4_sampling_ARR.csv": "9ce41642fb5e03361a965ef3c4101d6587ba0bea4662f2cd2999ea6e59c58df8",
+    "FigC5_ESG_curves.csv": "5872b6e303811cf4443fa400ede8fd490c98ac84643a357829b28c5d52ab232d"
+  }
+}
